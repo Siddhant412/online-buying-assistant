@@ -1,0 +1,52 @@
+# Python env, caches
+.venv/
+env/
+venv/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+.pytest_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+.python-version
+
+# OS / Editor related
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Secrets / config
+.env
+.env.*
+*.secret
+*.pem
+
+# Build / dist
+build/
+dist/
+*.egg-info/
+.eggs/
+.cache/
+
+# Node
+node_modules/
+*.log
+
+# Project data
+data/index/
+data/processed/
+
+# Model / retrieval artifacts
+*.faiss
+*.npy
+*.npz
+*.pkl
+*.bin
+*.pt
+*.onnx
+*.jsonl

@@ -1,0 +1,4 @@
+﻿review_id,title,body,rating,date,verified,helpful_votes
+R1,Great so far,Coating lasted 6 months with daily use,4,6/12/24,TRUE,18
+R2,Peeling,Non-stick wore off in 3 months,2,11/20/24,TRUE,45
+R3,Solid,"After a year, still slick if hand-washed",5,2/10/25,FALSE,7
