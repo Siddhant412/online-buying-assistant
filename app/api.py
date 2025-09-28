@@ -5,6 +5,7 @@ from .chunk import chunk_processed
 from .indexer import build_indexes, list_products
 from .retriever import HybridRetriever
 from .answerer import answer_from_passages
+from .temporal import analyze_temporal_conflict
 from pathlib import Path
 
 app = FastAPI(title="Product QA RAG (MVP)")
@@ -36,4 +37,5 @@ def ask(req: AskReq):
         raise HTTPException(400, f"Index not found for product_id={req.product_id}: {e}")
     hits = retr.search(req.question, k_dense=30, k_out=8)
     ans = answer_from_passages(req.question, hits, max_sents=2)
-    return {"question": req.question, "result": ans, "evidence": hits}
+    analysis = analyze_temporal_conflict(hits)
+    return {"question": req.question, "result": ans, "evidence": hits, "consensus": analysis}
