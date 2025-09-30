@@ -4,6 +4,7 @@ from .ingest import ingest_one
 from .chunk import chunk_processed
 from .indexer import build_indexes, list_products
 from .retriever import HybridRetriever
+from .llm_answerer import generate_llm_answer
 from .answerer import answer_from_passages
 from .temporal import analyze_temporal_conflict
 from pathlib import Path
@@ -35,7 +36,14 @@ def ask(req: AskReq):
         retr = HybridRetriever(req.product_id)
     except Exception as e:
         raise HTTPException(400, f"Index not found for product_id={req.product_id}: {e}")
+
     hits = retr.search(req.question, k_dense=30, k_out=8)
-    ans = answer_from_passages(req.question, hits, max_sents=2)
+
+    # Try LLM, on any error, fall back to extractive answer
+    try:
+        ans = generate_llm_answer(req.question, hits)
+    except Exception as e:
+        ans = answer_from_passages(req.question, hits, max_sents=2)
+
     analysis = analyze_temporal_conflict(hits)
     return {"question": req.question, "result": ans, "evidence": hits, "consensus": analysis}
