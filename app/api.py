@@ -8,6 +8,9 @@ from .llm_answerer import generate_llm_answer
 from .answerer import answer_from_passages
 from .temporal import analyze_temporal_conflict
 from pathlib import Path
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = FastAPI(title="Product QA RAG (MVP)")
 
