@@ -102,7 +102,8 @@ with tabs[0]:
             # answer block
             st.subheader("Answer")
             st.write(result.get("answer","(no answer)"))
-            st.caption(f"Confidence: {result.get('confidence', 0):.2f}")
+            engine = result.get("engine","?")
+            st.caption(f"Engine: {engine} | Confidence: {result.get('confidence',0):.2f}")
 
             # citations
             cits = result.get("citations", [])

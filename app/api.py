@@ -45,8 +45,10 @@ def ask(req: AskReq):
     # Try LLM, on any error, fall back to extractive answer
     try:
         ans = generate_llm_answer(req.question, hits)
+        ans["engine"] = "llm"
     except Exception as e:
         ans = answer_from_passages(req.question, hits, max_sents=2)
+        ans["engine"] = "extractive"
 
     analysis = analyze_temporal_conflict(hits)
     return {"question": req.question, "result": ans, "evidence": hits, "consensus": analysis}
