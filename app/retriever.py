@@ -6,6 +6,8 @@ from sentence_transformers import SentenceTransformer, util
 from sentence_transformers import CrossEncoder
 from rank_bm25 import BM25Okapi
 from .config import INDEX_DIR, EMB_MODEL_NAME, RERANKER_NAME
+import torch
+device = "mps" if torch.backends.mps.is_available() else "cpu"
 
 def _load_bm25(pid):
     with open(INDEX_DIR / f"{pid}.bm25.pkl", "rb") as f:
@@ -26,7 +28,7 @@ class HybridRetriever:
         self.bm25, self.docs_b = _load_bm25(product_id)
         self.faiss, self.docs_d = _load_dense(product_id)
         self.emb_model = SentenceTransformer(EMB_MODEL_NAME)
-        self.reranker = CrossEncoder(RERANKER_NAME)
+        self.reranker = CrossEncoder(RERANKER_NAME, device=device)
 
     def _prior(self, d):
         m = d.get("meta", {})

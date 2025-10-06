@@ -1,0 +1,6 @@
+review_id,title,body,rating,date,verified,helpful_votes
+R1,Perfect Product,The food gets fried evenly,4,6/12/24,TRUE,18
+R2,Hard to clean,"Whatever I fry in this air fryer, it gets stuck on the container, and becomes very hard to wash it off",2,1/20/25,TRUE,45
+R3,Difficult to remove stains,"Just after using this product 2 times, the container got stained badly",1,2/10/25,FALSE,37
+R4,Long Lasting,I have been using this product for over an year now. Still works perfectly,5,4/5/23,TRUE,24
+R5,Good Quality,"Its been 6 months, and still the product works as promised",5,6/23/24,TRUE,26

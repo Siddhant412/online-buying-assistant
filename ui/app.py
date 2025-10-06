@@ -98,11 +98,20 @@ with tabs[0]:
             result = res.get("result", {})
             evidence = res.get("evidence", [])
             consensus = res.get("consensus", {})
+            faith = res.get("faithfulness", {})
 
             # answer block
             st.subheader("Answer")
             st.write(result.get("answer","(no answer)"))
-            st.caption(f"Confidence: {result.get('confidence', 0):.2f}")
+            engine = result.get("engine","?")
+            st.caption(f"Engine: {engine} | Confidence: {result.get('confidence',0):.2f}")
+
+            if faith:
+                st.subheader("Faithfulness")
+                st.caption(f"Supported sentences: {faith.get('overall_supported_rate',0):.2f}")
+                for i, s in enumerate(faith.get("sentences", []), 1):
+                    status = "✅ supported" if s["supported"] else "⚠️ needs evidence"
+                    st.write(f"{i}. {status} — cites {s.get('cited_ids',[])} — {s.get('notes','')}")
 
             # citations
             cits = result.get("citations", [])

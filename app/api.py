@@ -9,6 +9,7 @@ from .answerer import answer_from_passages
 from .temporal import analyze_temporal_conflict
 from pathlib import Path
 from dotenv import load_dotenv
+from .faithfulness import evaluate_answer
 
 load_dotenv()
 
@@ -45,8 +46,22 @@ def ask(req: AskReq):
     # Try LLM, on any error, fall back to extractive answer
     try:
         ans = generate_llm_answer(req.question, hits)
+        ans["engine"] = "llm"
     except Exception as e:
         ans = answer_from_passages(req.question, hits, max_sents=2)
+        ans["engine"] = "extractive"
 
     analysis = analyze_temporal_conflict(hits)
-    return {"question": req.question, "result": ans, "evidence": hits, "consensus": analysis}
+
+    faith = evaluate_answer(ans.get("answer",""), hits)
+
+    if faith["overall_supported_rate"] < 0.75:
+        ans["confidence"] = round(max(0.3, ans.get("confidence", 0.6) * 0.9), 2)
+
+    return {
+        "question": req.question,
+        "result": ans,
+        "evidence": hits,
+        "consensus": analysis,
+        "faithfulness": faith
+    }
