@@ -1,5 +1,7 @@
 # Online Buying Assistant (RAG QA System)
 
+Code Link: [https://github.com/Siddhant412/online-buying-assistant.git](https://github.com/Siddhant412/online-buying-assistant.git)
+
 ## 1. Achievements so far
 
 - Implemented an end‑to‑end ingestion -> indexing -> retrieval -> answering pipeline.
