@@ -1,0 +1,23 @@
+{"product_id":"pan","question":"How long does the non-stick coating last?","answerable":true,"gold_spans":[{"source_id":"R2","relevance":2},{"source_id":"R1","relevance":1}]}
+{"product_id":"pan","question":"Is there info on induction compatibility?","answerable":false,"gold_spans":[]}
+{"product_id": "pan", "question": "Is the handle of the pan sturdy?", "answerable": false, "gold_spans": []}
+{"product_id": "airfryer", "question": "Is the basket easy to clean?", "answerable": true, "gold_spans": [{"source_id": "R3", "relevance": 1}, {"source_id": "R2", "relevance": 2}]}
+{"product_id": "airfryer", "question": "Is little bit of oil needed to fry the food?", "answerable": false, "gold_spans": []}
+{"product_id":"pan","question":"Does the coating scratch quickly even with gentle utensils?","answerable":true,"gold_spans":[{"source_id":"R4","relevance":2},{"source_id":"R7","relevance":1}]}
+{"product_id":"pan","question":"Does the pan warp on induction cooktops?","answerable":true,"gold_spans":[{"source_id":"R6","relevance":2}]}
+{"product_id":"airfryer","question":"Does the basket coating peel after a few months?","answerable":true,"gold_spans":[{"source_id":"R7","relevance":2}]}
+{"product_id":"airfryer","question":"Is there a loud timer that shuts off the heater?","answerable":true,"gold_spans":[{"source_id":"R8","relevance":2}]}
+{"product_id":"pan","question":"Does putting the pan in the dishwasher damage the coating?","answerable":true,"gold_spans":[{"source_id":"R8","relevance":2}]}
+{"product_id":"pan","question":"Do handles loosen over time?","answerable":true,"gold_spans":[{"source_id":"R11","relevance":2}]}
+{"product_id":"airfryer","question":"Can the heater stay on after the timer ends?","answerable":true,"gold_spans":[{"source_id":"R11","relevance":2},{"source_id":"R8","relevance":1}]}
+{"product_id":"airfryer","question":"Do users report smoke when cooking greasy foods?","answerable":true,"gold_spans":[{"source_id":"R12","relevance":2}]}
+{"product_id":"airfryer","question":"Is the fan noise loud on high?","answerable":true,"gold_spans":[{"source_id":"R15","relevance":2}]}
+{"product_id":"airfryer","question":"Is the capacity enough for more than two portions?","answerable":true,"gold_spans":[{"source_id":"R16","relevance":2},{"source_id":"R9","relevance":1}]}
+{"product_id":"blender","question":"Does the blender leak after a couple months?","answerable":true,"gold_spans":[{"source_id":"R2","relevance":2}]}
+{"product_id":"blender","question":"Is it loud on high speed?","answerable":true,"gold_spans":[{"source_id":"R3","relevance":2}]}
+{"product_id":"blender","question":"Are the cups dishwasher safe?","answerable":true,"gold_spans":[{"source_id":"R4","relevance":2}]}
+{"product_id":"blender","question":"Is there a glass jar option included?","answerable":false,"gold_spans":[]}
+{"product_id":"vacuum","question":"Does the vacuum meet the claimed 40 minute runtime?","answerable":true,"gold_spans":[{"source_id":"R2","relevance":2}]}
+{"product_id":"vacuum","question":"Is it easy to carry upstairs?","answerable":true,"gold_spans":[{"source_id":"R4","relevance":2}]}
+{"product_id":"vacuum","question":"Can you buy spare batteries?","answerable":true,"gold_spans":[{"source_id":"R5","relevance":2}]}
+{"product_id":"vacuum","question":"Does it include an LED on the floor head?","answerable":false,"gold_spans":[]}

@@ -1,0 +1,34 @@
+{"product_id":"pan","question":"Do reviewers report mixed durability for the non-stick coating?","answerable":true,"gold_spans":[{"source_id":"R1","relevance":1},{"source_id":"R2","relevance":2},{"source_id":"R3","relevance":1}]}
+{"product_id":"pan","question":"Does hand-washing help keep the pan non-stick after long use?","answerable":true,"gold_spans":[{"source_id":"R3","relevance":2}]}
+{"product_id":"pan","question":"Is the pan oven-safe?","answerable":false,"gold_spans":[]}
+{"product_id":"airfryer","question":"Does the air fryer cook food evenly?","answerable":true,"gold_spans":[{"source_id":"R1","relevance":2}]}
+{"product_id":"airfryer","question":"Do multiple users struggle with cleaning or stains?","answerable":true,"gold_spans":[{"source_id":"R2","relevance":2},{"source_id":"R3","relevance":2}]}
+{"product_id":"airfryer","question":"How well does the fryer hold up over time?","answerable":true,"gold_spans":[{"source_id":"R4","relevance":2},{"source_id":"R5","relevance":1}]}
+{"product_id":"airfryer","question":"Does it have a preheat alarm?","answerable":false,"gold_spans":[]}
+{"product_id":"pan","question":"Do reviewers recommend avoiding the dishwasher to keep the coating intact?","answerable":true,"gold_spans":[{"source_id":"R5","relevance":2}]}
+{"product_id":"pan","question":"How helpful is customer support when the coating chips?","answerable":true,"gold_spans":[{"source_id":"R7","relevance":2}]}
+{"product_id":"pan","question":"Does the pan come with a lid in the box?","answerable":false,"gold_spans":[]}
+{"product_id":"airfryer","question":"Is cleaning simpler because of a removable tray?","answerable":true,"gold_spans":[{"source_id":"R6","relevance":2}]}
+{"product_id":"airfryer","question":"Does it have a preheat alert sound?","answerable":true,"gold_spans":[{"source_id":"R10","relevance":2}]}
+{"product_id":"airfryer","question":"Is it suitable for cooking for a family of four?","answerable":true,"gold_spans":[{"source_id":"R9","relevance":2}]}
+{"product_id":"airfryer","question":"Does it connect to a mobile app for control?","answerable":false,"gold_spans":[]}
+{"product_id":"pan","question":"How long does the coating last when only hand-washing?","answerable":true,"gold_spans":[{"source_id":"R9","relevance":2},{"source_id":"R5","relevance":1}]}
+{"product_id":"pan","question":"Is the pan heavier than expected?","answerable":true,"gold_spans":[{"source_id":"R10","relevance":2},{"source_id":"R6","relevance":1}]}
+{"product_id":"pan","question":"Do handles stay cool on the stove?","answerable":true,"gold_spans":[{"source_id":"R10","relevance":2}]}
+{"product_id":"airfryer","question":"Is there smoke when cooking bacon or greasy foods?","answerable":true,"gold_spans":[{"source_id":"R12","relevance":2}]}
+{"product_id":"airfryer","question":"Is the included recipe booklet useful?","answerable":true,"gold_spans":[{"source_id":"R13","relevance":2}]}
+{"product_id":"airfryer","question":"How fast does it heat up and is there an alert?","answerable":true,"gold_spans":[{"source_id":"R14","relevance":2},{"source_id":"R10","relevance":1}]}
+{"product_id":"airfryer","question":"Is the fan noise bothersome on higher settings?","answerable":true,"gold_spans":[{"source_id":"R15","relevance":2}]}
+{"product_id":"airfryer","question":"Does it include extra accessories like racks or skewers?","answerable":false,"gold_spans":[]}
+{"product_id":"blender","question":"How long do lids or seals last before issues show up?","answerable":true,"gold_spans":[{"source_id":"R2","relevance":2},{"source_id":"R6","relevance":1}]}
+{"product_id":"blender","question":"Is the motor noisy?","answerable":true,"gold_spans":[{"source_id":"R3","relevance":2}]}
+{"product_id":"blender","question":"Is it suitable for family-sized smoothies?","answerable":true,"gold_spans":[{"source_id":"R5","relevance":2}]}
+{"product_id":"blender","question":"Does it ship with multiple speed controls?","answerable":true,"gold_spans":[{"source_id":"R7","relevance":2}]}
+{"product_id":"blender","question":"Does it support heating soups?","answerable":false,"gold_spans":[]}
+{"product_id":"vacuum","question":"How well does it handle pet hair on hard floors?","answerable":true,"gold_spans":[{"source_id":"R1","relevance":2}]}
+{"product_id":"vacuum","question":"Does the filter clog quickly?","answerable":true,"gold_spans":[{"source_id":"R3","relevance":2}]}
+{"product_id":"vacuum","question":"Can it replace the battery easily?","answerable":true,"gold_spans":[{"source_id":"R2","relevance":1},{"source_id":"R5","relevance":2}]}
+{"product_id":"vacuum","question":"Is there an LED light on the floor head?","answerable":true,"gold_spans":[{"source_id":"R10","relevance":2}]}
+{"product_id":"vacuum","question":"Does the wall mount feel sturdy?","answerable":true,"gold_spans":[{"source_id":"R7","relevance":2}]}
+{"product_id":"vacuum","question":"Is the dust bin large enough for a whole house?","answerable":true,"gold_spans":[{"source_id":"R9","relevance":2}]}
+{"product_id":"vacuum","question":"Does it come with a mopping attachment?","answerable":false,"gold_spans":[]}

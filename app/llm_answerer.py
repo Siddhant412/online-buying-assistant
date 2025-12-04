@@ -115,7 +115,12 @@ def _ollama_chat(system: str, user: str, model: str, url: str) -> str:
     return data.get("message", {}).get("content", "").strip()
 
 
-def generate_llm_answer(question: str, passages: List[Dict]) -> Dict:
+def generate_llm_answer(
+    question: str,
+    passages: List[Dict],
+    model_name: str | None = None,
+    ollama_url: str | None = None
+) -> Dict:
     """
     Returns:
     {
@@ -130,7 +135,9 @@ def generate_llm_answer(question: str, passages: List[Dict]) -> Dict:
     evidence, allowed = _evidence_block(passages)
     prompt = USER_TEMPLATE.format(question=question, evidence_block=evidence)
     try:
-        raw = _ollama_chat(SYSTEM_RULES, prompt, OLLAMA_MODEL, OLLAMA_URL)
+        model = model_name or OLLAMA_MODEL
+        url = ollama_url or OLLAMA_URL
+        raw = _ollama_chat(SYSTEM_RULES, prompt, model, url)
     except Exception as e:
         # let caller decide about fallback, but return structured error context
         raise RuntimeError(f"Ollama error: {e}")
