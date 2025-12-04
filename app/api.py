@@ -22,6 +22,7 @@ class IngestReq(BaseModel):
 class AskReq(BaseModel):
     product_id: str
     question: str
+    model: str | None = None
 
 @app.post("/ingest")
 def ingest(req: IngestReq):
@@ -45,7 +46,7 @@ def ask(req: AskReq):
 
     # Try LLM, on any error, fall back to extractive answer
     try:
-        ans = generate_llm_answer(req.question, hits)
+        ans = generate_llm_answer(req.question, hits, model_name=req.model)
         ans["engine"] = "llm"
     except Exception as e:
         ans = answer_from_passages(req.question, hits, max_sents=2)

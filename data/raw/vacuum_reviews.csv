@@ -1,0 +1,11 @@
+review_id,title,body,rating,date,verified,helpful_votes
+R1,Great on hardwood,"Picks up pet hair well on hardwood; soft roller helps",5,6/18/24,TRUE,28
+R2,Battery dips,"Runs ~25 minutes on medium, not 40 as claimed",3,9/9/24,FALSE,17
+R3,Filter clogs,"HEPA filter clogs every 2 weeks; suction drops fast",2,10/20/24,TRUE,14
+R4,Lightweight,"Super light and easy to carry upstairs",5,7/30/24,TRUE,22
+R5,No replacement battery,"Could not find spare battery to buy",2,12/5/24,TRUE,10
+R6,Carpet struggle,"Struggles on thick carpet; fine on rugs",3,1/8/25,FALSE,8
+R7,Wall mount flimsy,"Wall mount feels flimsy; fell once",2,2/2/25,TRUE,6
+R8,Handheld handy,"Handheld mode great for car seats",4,8/14/24,TRUE,9
+R9,Short bin,"Dust bin fills fast; needs emptying mid-clean",3,11/11/24,FALSE,7
+R10,No LED,"Floor head has no LED light; wish it had one",3,3/1/25,TRUE,5

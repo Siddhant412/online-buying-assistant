@@ -49,4 +49,3 @@ data/processed/
 *.bin
 *.pt
 *.onnx
-*.jsonl

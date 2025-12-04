@@ -1,0 +1,9 @@
+review_id,title,body,rating,date,verified,helpful_votes
+R1,Powerful,"Crushes frozen berries easily; smoothies in under 30 seconds",5,7/10/24,TRUE,34
+R2,Leaks,"Started leaking at the seal after 2 months of daily use",2,9/2/24,TRUE,21
+R3,Too loud,"Motor is loud on high, wakes up the house",2,11/15/24,FALSE,12
+R4,Easy clean,"Cups and lids clean fine in dishwasher; blade needs hand wash",4,8/22/24,TRUE,9
+R5,Small batch,"24oz is enough for one person; too small for family smoothies",3,10/5/24,FALSE,8
+R6,Broke lid,"One lid cracked after 3 weeks; support sent a replacement",3,12/1/24,TRUE,5
+R7,Pulse control,"Pulse mode is handy; two speeds only",4,1/12/25,TRUE,6
+R8,No glass option,"Wish it came with glass jars; only plastic cups included",3,2/14/25,FALSE,7

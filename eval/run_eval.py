@@ -1,7 +1,7 @@
 from __future__ import annotations
-import argparse, json, sys, math, os
+import argparse, json, sys, math, os, csv
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Any
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))  # add project root to PYTHONPATH
 from app.retriever import HybridRetriever
@@ -68,6 +68,8 @@ def main():
         help="Also evaluate the extractive baseline alongside LLM models.",
     )
     ap.add_argument("--disable_llm", action="store_true", help="Force extractive fallback only (ignores --models).")
+    ap.add_argument("--export_csv", type=Path, help="Optional path to write per-example results as CSV")
+    ap.add_argument("--export_json", type=Path, help="Optional path to write per-example results as JSON")
     args = ap.parse_args()
 
     dataset_paths = args.dataset or [DEFAULT_DATASET]
@@ -132,12 +134,15 @@ def main():
 
     # Evaluate answers per model
     summary_rows = []
+    per_example_rows: List[Dict[str, Any]] = []
     for model in models:
         sent_csr = []
         tn_flags, fp_flags = [], []
         llm_errors = 0
+        calib_records = []
 
         for ex, hits, _ranked_ids in hits_cache:
+            pid = ex["product_id"]
             q = ex["question"]
             answerable = bool(ex.get("answerable", True))
             gold = ex.get("gold_spans", [])
@@ -154,14 +159,36 @@ def main():
 
             atext = ans.get("answer", "")
 
-            if answerable and gold_ids:
-                sent_csr.append(citation_support_rate(atext, gold_ids))
+            csr_ex = citation_support_rate(atext, gold_ids) if (answerable and gold_ids) else None
+            if csr_ex is not None:
+                sent_csr.append(csr_ex)
 
             pred_unans = predicted_unanswerable(atext)
             if not answerable:
                 tn_flags.append(1 if pred_unans else 0)
             else:
                 fp_flags.append(1 if pred_unans else 0)
+
+            confidence = float(ans.get("confidence", 0.0))
+            # simple per-example "accuracy": citation support > 0 for answerables, correct insufficient for unanswerables
+            if answerable:
+                acc = 1.0 if (csr_ex is not None and csr_ex > 0) else 0.0
+            else:
+                acc = 1.0 if pred_unans else 0.0
+            calib_records.append({"conf": confidence, "acc": acc})
+
+            per_example_rows.append({
+                "dataset": ex.get("_dataset", ""),
+                "product_id": pid,
+                "question": q,
+                "answerable": answerable,
+                "gold_ids": ";".join(gold_ids),
+                "model": model,
+                "confidence": confidence,
+                "pred_unanswerable": bool(pred_unans),
+                "citation_support_rate": csr_ex if csr_ex is not None else "",
+                "accuracy": acc
+            })
 
         csr_val = avg(sent_csr)
         tn_rate = avg(tn_flags)
@@ -202,6 +229,33 @@ def main():
             fp_txt = f"{row['fp']}/{row['fp_n']} ({row['fp_rate']:.3f})" if row["fp_n"] else "n/a"
             err_txt = str(row["llm_errors"]) if row["llm_errors"] else "-"
             print(f"{row['model']}\t{row['csr']:.3f}\t{tn_txt}\t{fp_txt}\t{err_txt}")
+
+    # Confidence calibration bins
+    if per_example_rows:
+        bins = [0.0, 0.2, 0.4, 0.6, 0.8, 1.01]
+        print("\n=== Confidence Calibration (accuracy by confidence bins) ===")
+        for model in models:
+            recs = [r for r in per_example_rows if r["model"] == model]
+            if not recs:
+                continue
+            print(f"\nModel: {model}")
+            for i in range(len(bins) - 1):
+                lo, hi = bins[i], bins[i + 1]
+                bucket = [r for r in recs if lo <= float(r["confidence"]) < hi]
+                acc = avg([r["accuracy"] for r in bucket]) if bucket else float("nan")
+                print(f"  {lo:.1f}–{hi:.1f}: n={len(bucket)}, acc={acc:.3f}")
+
+    # Exports
+    if args.export_csv and per_example_rows:
+        with args.export_csv.open("w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=list(per_example_rows[0].keys()))
+            writer.writeheader()
+            writer.writerows(per_example_rows)
+        print(f"\nWrote CSV: {args.export_csv}")
+    if args.export_json and per_example_rows:
+        with args.export_json.open("w", encoding="utf-8") as f:
+            json.dump(per_example_rows, f, ensure_ascii=False, indent=2)
+        print(f"Wrote JSON: {args.export_json}")
 
 
 if __name__ == "__main__":
