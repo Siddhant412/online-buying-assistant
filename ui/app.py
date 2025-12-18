@@ -172,6 +172,32 @@ def _avg(xs):
     xs = [x for x in xs if x is not None and not (isinstance(x, float) and (pd.isna(x) or pd.isnull(x)))]
     return (sum(xs)/len(xs)) if xs else 0.0
 
+def _arrow_safe_eval_df(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Streamlit uses Arrow for dataframe rendering; mixed-type object columns can crash.
+    Normalize common eval columns into Arrow-friendly dtypes.
+    """
+    if df is None or df.empty:
+        return df
+    out = df.copy()
+
+    # Replace empty strings with nulls to avoid Arrow trying (and failing) to coerce types.
+    for col in out.columns:
+        if out[col].dtype == object:
+            out[col] = out[col].replace({"": None})
+
+    for col in ("confidence", "citation_support_rate", "accuracy"):
+        if col in out.columns:
+            out[col] = pd.to_numeric(out[col], errors="coerce")
+
+    if "answerable" in out.columns:
+        try:
+            out["answerable"] = out["answerable"].astype("boolean")
+        except Exception:
+            pass
+
+    return out
+
 def _run_eval_subprocess(datasets: list[str], models: list[str], k: int) -> tuple[int, str, list[dict]]:
     """
     Runs eval/run_eval.py in a subprocess so native-library crashes won't take down Streamlit.
@@ -400,10 +426,10 @@ with tabs[2]:
             if not per_rows:
                 st.warning("No per-example results were returned (export_json empty).")
             else:
-                df = pd.DataFrame(per_rows)
+                df = _arrow_safe_eval_df(pd.DataFrame(per_rows))
                 if not df.empty:
                     st.subheader("Per-example results")
-                    st.dataframe(df, use_container_width=True)
+                    st.dataframe(df, width="stretch")
 
                     # Lightweight summaries if expected columns exist
                     if {"model", "citation_support_rate", "accuracy"}.issubset(df.columns):
@@ -417,7 +443,7 @@ with tabs[2]:
                             )
                             .reset_index()
                         )
-                        st.dataframe(summ, use_container_width=True)
+                        st.dataframe(_arrow_safe_eval_df(summ), width="stretch")
 
                     # exports
                     st.download_button(
