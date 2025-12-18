@@ -1,5 +1,7 @@
 # Online Buying Assistant
 
+[Google Drive folder (report, video demo)](https://drive.google.com/drive/folders/1RQfFxSdwmV5KtkuROgQ014Ix9i_RDrnO?usp=sharing)
+
 Evidence-grounded Product QnA over product pages + reviews using a hybrid RAG pipeline (BM25 + dense FAISS + cross-encoder reranking) with a local LLM (Ollama) and a Streamlit UI.
 
 ## Quickstart
