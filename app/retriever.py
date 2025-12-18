@@ -6,8 +6,46 @@ from sentence_transformers import SentenceTransformer, util
 from sentence_transformers import CrossEncoder
 from rank_bm25 import BM25Okapi
 from .config import INDEX_DIR, EMB_MODEL_NAME, RERANKER_NAME
+import os
 import torch
-device = "mps" if torch.backends.mps.is_available() else "cpu"
+
+def _mps_available() -> bool:
+    try:
+        return bool(torch.backends.mps.is_available() and torch.backends.mps.is_built())
+    except Exception:
+        return False
+
+def _resolve_device(env_key: str, default: str) -> str:
+    v = (os.getenv(env_key, "") or "").strip().lower()
+    if v in {"cpu", "mps", "cuda"}:
+        if v == "mps" and not _mps_available():
+            return "cpu"
+        if v == "cuda" and not torch.cuda.is_available():
+            return "cpu"
+        return v
+    return default
+
+def _default_rerank_device() -> str:
+    # MPS can be unstable for some transformer setups; allow override via env.
+    return "mps" if _mps_available() else "cpu"
+
+_EMB_MODELS: dict[str, SentenceTransformer] = {}
+_RERANKERS: dict[tuple[str, str], CrossEncoder] = {}
+
+def _get_emb_model(device: str) -> SentenceTransformer:
+    m = _EMB_MODELS.get(device)
+    if m is None:
+        m = SentenceTransformer(EMB_MODEL_NAME, device=device)
+        _EMB_MODELS[device] = m
+    return m
+
+def _get_reranker(model_name: str, device: str) -> CrossEncoder:
+    key = (model_name, device)
+    m = _RERANKERS.get(key)
+    if m is None:
+        m = CrossEncoder(model_name, device=device)
+        _RERANKERS[key] = m
+    return m
 
 def _load_bm25(pid):
     with open(INDEX_DIR / f"{pid}.bm25.pkl", "rb") as f:
@@ -27,8 +65,17 @@ class HybridRetriever:
         self.w_dense = w_dense
         self.bm25, self.docs_b = _load_bm25(product_id)
         self.faiss, self.docs_d = _load_dense(product_id)
-        self.emb_model = SentenceTransformer(EMB_MODEL_NAME)
-        self.reranker = CrossEncoder(RERANKER_NAME, device=device)
+
+        emb_device = _resolve_device("EMB_DEVICE", "cpu")
+        rerank_device = _resolve_device("RERANK_DEVICE", _default_rerank_device())
+
+        self.emb_model = _get_emb_model(emb_device)
+        try:
+            self.reranker = _get_reranker(RERANKER_NAME, rerank_device)
+        except Exception:
+            # If the chosen accelerator device fails (common with some MPS setups),
+            # fall back to CPU for reliability.
+            self.reranker = _get_reranker(RERANKER_NAME, "cpu")
 
     def _prior(self, d):
         m = d.get("meta", {})

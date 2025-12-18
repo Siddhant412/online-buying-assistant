@@ -1,4 +1,4 @@
-import os, json, textwrap, sys
+import os, json, textwrap, sys, re, subprocess, tempfile
 from datetime import datetime
 from pathlib import Path
 import pandas as pd
@@ -11,25 +11,56 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT = SCRIPT_DIR.parent
 sys.path = [str(ROOT)] + [p for p in sys.path if p != str(SCRIPT_DIR) and p != str(ROOT)]
 
-from app.retriever import HybridRetriever
-from app.llm_answerer import generate_llm_answer
-from app.answerer import answer_from_passages
 from eval.metrics import recall_at_k, ndcg_at_k, citation_support_rate, predicted_unanswerable
 
 load_dotenv()
 API_URL = os.getenv("API_URL", "http://127.0.0.1:8000")
+AMAZON_INGEST_TIMEOUT_SEC = int(os.getenv("AMAZON_INGEST_TIMEOUT_SEC", "600"))
 DEFAULT_DATASETS = [
     "eval/groundtruth_dataset.jsonl",
     "eval/groundtruth_dataset_additional.jsonl"
 ]
 
+_ASIN_RE = re.compile(r"(?i)(?:dp/|product-reviews/|asin=)?([A-Z0-9]{10})")
+
+def extract_asin(text: str) -> str | None:
+    m = _ASIN_RE.search((text or "").strip())
+    return m.group(1).upper() if m else None
+
 def api_get_products():
-    r = requests.get(f"{API_URL}/products", timeout=15)
-    r.raise_for_status()
-    return r.json().get("products", [])
+    try:
+        r = requests.get(f"{API_URL}/products", timeout=15)
+        r.raise_for_status()
+        return r.json().get("products", [])
+    except Exception:
+        return []
+
+def api_get_products_meta():
+    """
+    Returns list of {"product_id": ..., "title": ...}. Falls back to /products.
+    """
+    try:
+        r = requests.get(f"{API_URL}/products_meta", timeout=15)
+        r.raise_for_status()
+        items = r.json().get("products", [])
+        out = []
+        for it in items:
+            pid = (it or {}).get("product_id")
+            title = (it or {}).get("title")
+            if pid:
+                out.append({"product_id": pid, "title": title or pid})
+        return out
+    except Exception:
+        return [{"product_id": pid, "title": pid} for pid in (api_get_products() or [])]
 
 def api_ingest(product_html: str, reviews_csv: str):
     r = requests.post(f"{API_URL}/ingest", json={"product_html": product_html, "reviews_csv": reviews_csv}, timeout=120)
+    r.raise_for_status()
+    return r.json()
+
+def api_ingest_amazon(query_or_url: str, max_pages: int = 3, sort: str = "recent"):
+    payload = {"query_or_url": query_or_url, "max_pages": max_pages, "sort": sort}
+    r = requests.post(f"{API_URL}/ingest_amazon", json=payload, timeout=AMAZON_INGEST_TIMEOUT_SEC)
     r.raise_for_status()
     return r.json()
 
@@ -48,10 +79,8 @@ def badge_for_citation(c):
     if stype == "review":
         rating = meta.get("rating", "")
         date = meta.get("date", "")
-        verified = meta.get("verified", False)
         hv = meta.get("helpful_votes", 0)
-        vtxt = "✅ verified" if verified else "⚪ unverified"
-        return f"`[{sid}]`  ⭐{rating}  {vtxt}  {date}  👍{hv}"
+        return f"`[{sid}]`  ⭐{rating}  {date}  👍{hv}"
     elif stype == "spec":
         return f"`[{sid}]` spec"
     else:
@@ -63,7 +92,6 @@ def render_evidence(evi):
             meta = p.get("meta", {})
             if p["source_type"] == "review":
                 st.write(f"⭐ {meta.get('rating','?')}  |  "
-                        f"{'✅ verified' if meta.get('verified') else '⚪︎ unverified'}  |  "
                         f"date: {meta.get('date','?')}  |  👍 {meta.get('helpful_votes',0)}")
             txt = p["text"].strip()
             if len(txt) > 1000:
@@ -76,6 +104,49 @@ def render_consensus(cons):
     if by_win:
         df = pd.DataFrame(by_win)[["window","pos","neg","neu"]].set_index("window")
         st.bar_chart(df)
+
+def render_qa_response(res: dict):
+    result = res.get("result", {})
+    evidence = res.get("evidence", [])
+    consensus = res.get("consensus", {})
+    faith = res.get("faithfulness", {})
+
+    st.subheader("Answer")
+    st.write(result.get("answer", "(no answer)"))
+
+    meta_cols = st.columns(3)
+    with meta_cols[0]:
+        st.metric("Engine", result.get("engine", "?"))
+    with meta_cols[1]:
+        st.metric("Confidence", f"{float(result.get('confidence', 0.0)):.2f}")
+    with meta_cols[2]:
+        st.metric("Evidence items", str(len(evidence)))
+
+    cits = result.get("citations", [])
+    if cits:
+        st.caption("Citations")
+        st.write("  ".join([badge_for_citation(c) for c in cits]))
+
+    if faith:
+        with st.expander("Faithfulness details", expanded=False):
+            st.caption(f"Supported sentences: {faith.get('overall_supported_rate',0):.2f}")
+            for i, s in enumerate(faith.get("sentences", []), 1):
+                status = "✅ supported" if s["supported"] else "⚠️ needs evidence"
+                st.write(f"{i}. {status} — cites {s.get('cited_ids',[])} — {s.get('notes','')}")
+
+    st.divider()
+    colA, colB = st.columns([3, 2])
+    with colA:
+        st.subheader("Top Evidence")
+        render_evidence(evidence)
+    with colB:
+        st.subheader("Consensus Timeline")
+        render_consensus(consensus)
+
+def _default_select_index(options: list[str], preferred: str | None) -> int:
+    if preferred and preferred in options:
+        return options.index(preferred)
+    return 0
 
 # eval helpers
 def _load_dataset(path: str):
@@ -101,20 +172,62 @@ def _avg(xs):
     xs = [x for x in xs if x is not None and not (isinstance(x, float) and (pd.isna(x) or pd.isnull(x)))]
     return (sum(xs)/len(xs)) if xs else 0.0
 
-# UI
+def _run_eval_subprocess(datasets: list[str], models: list[str], k: int) -> tuple[int, str, list[dict]]:
+    """
+    Runs eval/run_eval.py in a subprocess so native-library crashes won't take down Streamlit.
+    Returns (exit_code, combined_output, per_example_rows_json).
+    """
+    root = Path(__file__).resolve().parents[1]
+    script = root / "eval" / "run_eval.py"
+
+    # Prefer the repo's venv python if Streamlit is launched outside the venv.
+    py_candidates = [
+        root / ".venv" / "bin" / "python",
+        root / "venv" / "bin" / "python",
+    ]
+    py = next((p for p in py_candidates if p.exists()), Path(sys.executable))
+
+    with tempfile.NamedTemporaryFile(prefix="eval_results_", suffix=".json", delete=False) as tmp:
+        out_json = tmp.name
+
+    cmd = [str(py), "-X", "faulthandler", str(script), "--k", str(k), "--export_json", out_json]
+    for ds in datasets:
+        cmd.extend(["--dataset", ds])
+    if models:
+        cmd.extend(["--models", ",".join(models)])
+
+    env = os.environ.copy()
+    # Make eval more stable across machines by default (do not override explicit user env).
+    env.setdefault("TOKENIZERS_PARALLELISM", "false")
+    env.setdefault("RERANK_DEVICE", "cpu")
+    env.setdefault("EMB_DEVICE", "cpu")
+    env.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
+    env.setdefault("PYTHONFAULTHANDLER", "1")
+    env.setdefault("OMP_NUM_THREADS", "1")
+    env.setdefault("MKL_NUM_THREADS", "1")
+
+    proc = subprocess.run(cmd, capture_output=True, text=True, env=env)
+    header = f"[eval] python={py}\n[eval] cmd={' '.join(cmd)}\n[eval] exit_code={proc.returncode}"
+    combined = header + ("\n\n" + (proc.stdout or "") if proc.stdout else "") + ("\n" + proc.stderr if proc.stderr else "")
+
+    rows: list[dict] = []
+    try:
+        if Path(out_json).exists():
+            rows = json.loads(Path(out_json).read_text(encoding="utf-8"))
+    except Exception:
+        rows = []
+    finally:
+        try:
+            Path(out_json).unlink(missing_ok=True)
+        except Exception:
+            pass
+
+    return proc.returncode, combined.strip(), rows
+
 st.set_page_config(page_title="Product QA Autopilot", layout="wide")
-st.title("🛒 Product QA Autopilot (MVP)")
+st.title("🛒 Product Buying Assistant")
 
-with st.sidebar:
-    st.subheader("Settings")
-    API_URL = st.text_input("FastAPI URL", API_URL)
-    st.caption("Tip: Keep your FastAPI server running in another terminal:\n`uvicorn app.api:app --reload`")
-    st.divider()
-    st.subheader("Quick links")
-    if st.button("Refresh products"):
-        st.session_state["_products"] = api_get_products()
-
-tabs = st.tabs(["Ask", "Ingest", "Eval"])
+tabs = st.tabs(["Amazon", "Ingest", "Eval"])
 # preload product list
 if "_products" not in st.session_state:
     try:
@@ -126,59 +239,105 @@ if "_products" not in st.session_state:
 MODEL_CHOICES = ["llama3.1:8b", "mistral:7b", "qwen2:7b", "phi3:14b", "extractive"]
 
 with tabs[0]:
-    col1, col2, col3 = st.columns([2, 3, 2])
-    with col1:
-        products = st.session_state.get("_products", [])
-        pid = st.selectbox("Product ID", options=(products or ["(none)"]), index=0)
-        manual_pid = st.text_input("…or type a product_id", value="" if products else "")
-        chosen_pid = manual_pid.strip() or (pid if pid != "(none)" else "")
-    with col2:
-        q = st.text_input("Your question", value="How long does the non-stick coating last?")
-    with col3:
-        model_choice = st.selectbox("Model", options=MODEL_CHOICES, index=0, help="Select LLM or extractive fallback.")
+    st.subheader("Amazon Product")
 
-    ask_btn = st.button("Ask", type="primary", disabled=not (chosen_pid and q))
-    if ask_btn:
-        try:
-            chosen_model = None if model_choice == "extractive" else model_choice
-            res = api_ask(chosen_pid, q, model=chosen_model)
-            result = res.get("result", {})
-            evidence = res.get("evidence", [])
-            consensus = res.get("consensus", {})
-            faith = res.get("faithfulness", {})
+    left, right = st.columns([1, 1], gap="large")
 
-            # answer block
-            st.subheader("Answer")
-            st.write(result.get("answer","(no answer)"))
-            engine = result.get("engine","?")
-            st.caption(f"Engine: {engine} | Confidence: {result.get('confidence',0):.2f}")
+    with left:
+        st.markdown("### 1) Get product data")
+        with st.form("amz_scrape_form", clear_on_submit=False):
+            query = st.text_input(
+                "Keyword / Amazon URL / ASIN",
+                value=st.session_state.get("amz_query", "Ninja blender 900W"),
+                key="amz_query_input",
+            )
+            max_pages = st.slider(
+                "Max review pages",
+                1,
+                10,
+                int(st.session_state.get("amz_max_pages", 3)),
+                key="amz_max_pages_slider",
+            )
+            sort = st.selectbox("Review sort", options=["recent", "helpful"], index=0, key="amz_sort")
+            run_scrape = st.form_submit_button("Ingest from Amazon", type="primary", disabled=not query)
 
-            if faith:
-                st.subheader("Faithfulness")
-                st.caption(f"Supported sentences: {faith.get('overall_supported_rate',0):.2f}")
-                for i, s in enumerate(faith.get("sentences", []), 1):
-                    status = "✅ supported" if s["supported"] else "⚠️ needs evidence"
-                    st.write(f"{i}. {status} — cites {s.get('cited_ids',[])} — {s.get('notes','')}")
+        if run_scrape:
+            try:
+                st.session_state["amz_query"] = query
+                st.session_state["amz_max_pages"] = max_pages
+                with st.spinner("Scraping and ingesting..."):
+                    resp = api_ingest_amazon(query, max_pages=max_pages, sort=sort)
+                st.success(f"Indexed {resp.get('asin')} with {resp.get('reviews')} reviews.")
+                if resp.get("warning"):
+                    st.warning(resp["warning"])
+                st.session_state["_products"] = api_get_products()
+                st.session_state["amz_product_id"] = resp.get("product_id")
+                st.session_state["amz_asin"] = resp.get("asin")
+                st.session_state["amz_url"] = resp.get("url")
+                st.session_state["amz_reviews"] = resp.get("reviews")
+                st.session_state["amz_title"] = resp.get("title") or resp.get("product_id")
+            except Exception as e:
+                st.error(f"Amazon ingest failed: {e}")
 
-            # citations
-            cits = result.get("citations", [])
-            if cits:
-                st.write("Citations:")
-                st.write("  ")
-                st.write("  ".join([badge_for_citation(c) for c in cits]))
 
-            st.divider()
+        # Summary card
+        pid = st.session_state.get("amz_product_id")
+        if pid:
+            st.markdown("### Current Amazon product")
+            # Prefer the title returned from ingest, else fall back to ID.
+            title = st.session_state.get("amz_title") or pid
+            st.write(title)
+            st.caption(f"Product ID: `{pid}`")
+            if st.session_state.get("amz_url"):
+                url = st.session_state.get("amz_url")
+                st.write(f"Source URL: {url}")
+                try:
+                    st.link_button("Open on Amazon", url)
+                except Exception:
+                    pass
+            if st.session_state.get("amz_reviews") is not None:
+                st.write(f"Reviews indexed: {st.session_state.get('amz_reviews')}")
 
-            colA, colB = st.columns([3,2])
-            with colA:
-                st.subheader("Top Evidence")
-                render_evidence(evidence)
-            with colB:
-                st.subheader("Consensus Timeline")
-                render_consensus(consensus)
+    with right:
+        st.markdown("### 2) Ask questions")
 
-        except Exception as e:
-            st.error(f"Request failed: {e}")
+        products_meta = api_get_products_meta()
+        title_map = {p["product_id"]: p.get("title") or p["product_id"] for p in products_meta}
+        pid_options = [p["product_id"] for p in products_meta] or ["(none)"]
+        preferred_pid = st.session_state.get("amz_product_id")
+
+        def _fmt_pid(pid: str) -> str:
+            return title_map.get(pid, pid)
+
+        pid = st.selectbox(
+            "Indexed product",
+            options=pid_options,
+            index=_default_select_index(pid_options, preferred_pid) if pid_options != ["(none)"] else 0,
+            help="Select the product to query (defaults to the most recently ingested Amazon product).",
+            key="amz_pid_select",
+            format_func=_fmt_pid,
+        )
+        if pid != "(none)":
+            st.caption(f"Product ID: `{pid}`")
+        model_choice = st.selectbox("Model", options=MODEL_CHOICES, index=0, key="amz_model_select")
+
+        with st.form("amz_ask_form", clear_on_submit=False):
+            q = st.text_input("Question", value=st.session_state.get("amz_question", "Is it good for smoothies?"), key="amz_question_input")
+            ask = st.form_submit_button("Ask", type="primary", disabled=(pid == "(none)" or not q))
+
+        if ask:
+            try:
+                st.session_state["amz_question"] = q
+                chosen_model = None if model_choice == "extractive" else model_choice
+                with st.spinner("Thinking..."):
+                    res = api_ask(pid, q, model=chosen_model)
+                st.session_state["amz_last_answer"] = res
+            except Exception as e:
+                st.error(f"Request failed: {e}")
+
+        last = st.session_state.get("amz_last_answer")
+        if last:
+            render_qa_response(last)
 
 with tabs[1]:
     st.write("Provide a saved product HTML and a reviews CSV (will be written to `data/raw/`).")
@@ -229,144 +388,43 @@ with tabs[2]:
     if run_btn:
         try:
             with st.spinner("Running evaluation..."):
-                # load data
-                data = []
-                dataset_sizes = {}
-                for ds in eval_datasets:
-                    items = _load_dataset(ds)
-                    dataset_sizes[os.path.basename(ds)] = len(items)
-                    data.extend(items)
+                code, output, per_rows = _run_eval_subprocess(eval_datasets, eval_models, k_val)
+            if output:
+                with st.expander("Eval logs", expanded=(code != 0)):
+                    st.code(output, language="text")
+            if code != 0:
+                st.error("Eval failed. See logs above.")
+            else:
+                st.success("Eval completed.")
 
-                if not data:
-                    st.error("No examples loaded.")
-                else:
-                    # retrieval once
-                    r_recall, r_ndcg = [], []
-                    hits_cache = []
-                    total_answerable = sum(1 for ex in data if ex.get("answerable", True))
-                    total_unanswerable = len(data) - total_answerable
-
-                    for ex in data:
-                        pid = ex["product_id"]
-                        q = ex["question"]
-                        answerable = bool(ex.get("answerable", True))
-                        gold = ex.get("gold_spans", [])
-                        gold_ids = [g["source_id"] for g in gold]
-                        gold_rel = _gold_rel_map(gold)
-
-                        retr = HybridRetriever(pid)
-                        hits = retr.search(q, k_dense=30, k_out=max(k_val, 10))
-                        ranked_ids = [h["source_id"] for h in hits]
-                        hits_cache.append((ex, hits, ranked_ids))
-
-                        if answerable and gold_ids:
-                            r_recall.append(recall_at_k(gold_ids, ranked_ids, k_val))
-                            r_ndcg.append(ndcg_at_k(ranked_ids, gold_rel, k_val))
-
-                    st.markdown("**Datasets:**")
-                    st.write(dataset_sizes)
-                    st.metric("Recall@k", f"{_avg(r_recall):.3f}", help="Answerable items only")
-                    st.metric("nDCG@k", f"{_avg(r_ndcg):.3f}", help="Answerable items only")
-                    st.caption(f"Answerable={total_answerable}, Unanswerable={total_unanswerable}")
-
-                    rows = []
-                    per_example_rows = []
-                    for model in eval_models:
-                        sent_csr = []
-                        tn_flags, fp_flags = [], []
-                        llm_errors = 0
-                        for ex, hits, _ranked_ids in hits_cache:
-                            q = ex["question"]
-                            answerable = bool(ex.get("answerable", True))
-                            gold = ex.get("gold_spans", [])
-                            gold_ids = [g["source_id"] for g in gold]
-
-                            if model == "extractive":
-                                ans = answer_from_passages(q, hits, max_sents=2)
-                            else:
-                                try:
-                                    ans = generate_llm_answer(q, hits, model_name=model)
-                                except Exception:
-                                    llm_errors += 1
-                                    ans = answer_from_passages(q, hits, max_sents=2)
-
-                            atext = ans.get("answer", "")
-                            if answerable and gold_ids:
-                                sent_csr.append(citation_support_rate(atext, gold_ids))
-                            pred_unans = predicted_unanswerable(atext)
-                            if not answerable:
-                                tn_flags.append(1 if pred_unans else 0)
-                            else:
-                                fp_flags.append(1 if pred_unans else 0)
-
-                            csr_ex = citation_support_rate(atext, gold_ids) if (answerable and gold_ids) else None
-                            confidence = float(ans.get("confidence", 0.0))
-                            if answerable:
-                                acc = 1.0 if (csr_ex is not None and csr_ex > 0) else 0.0
-                            else:
-                                acc = 1.0 if pred_unans else 0.0
-
-                            per_example_rows.append({
-                                "dataset": ex.get("_dataset", ""),
-                                "product_id": ex.get("product_id"),
-                                "question": q,
-                                "answerable": answerable,
-                                "gold_ids": ";".join(gold_ids),
-                                "model": model,
-                                "confidence": confidence,
-                                "pred_unanswerable": bool(pred_unans),
-                                "citation_support_rate": csr_ex if csr_ex is not None else None,
-                                "accuracy": acc
-                            })
-
-                        csr = _avg(sent_csr)
-                        tn_rate = _avg(tn_flags) if tn_flags else None
-                        fp_rate = _avg(fp_flags) if fp_flags else None
-
-                        rows.append({
-                            "Model": model,
-                            "Citation support": round(csr, 3),
-                            "TN (unans)": f"{sum(tn_flags)}/{len(tn_flags)}" if tn_flags else "n/a",
-                            "TN rate": round(tn_rate, 3) if tn_rate is not None else "n/a",
-                            "FP (ans)": f"{sum(fp_flags)}/{len(fp_flags)}" if fp_flags else "n/a",
-                            "FP rate": round(fp_rate, 3) if fp_rate is not None else "n/a",
-                            "LLM errors": llm_errors
-                        })
-
-                    df = pd.DataFrame(rows)
-                    st.subheader("Model comparison")
+            if not per_rows:
+                st.warning("No per-example results were returned (export_json empty).")
+            else:
+                df = pd.DataFrame(per_rows)
+                if not df.empty:
+                    st.subheader("Per-example results")
                     st.dataframe(df, use_container_width=True)
 
-                    # charts
-                    chart_df = df[["Model", "Citation support"]].set_index("Model")
-                    st.bar_chart(chart_df)
-
-                    # confidence calibration
-                    if per_example_rows:
-                        st.subheader("Confidence calibration")
-                        cal_bins = [0.0, 0.2, 0.4, 0.6, 0.8, 1.01]
-                        cal_table = []
-                        for model in eval_models:
-                            recs = [r for r in per_example_rows if r["model"] == model]
-                            for i in range(len(cal_bins) - 1):
-                                lo, hi = cal_bins[i], cal_bins[i+1]
-                                bucket = [r for r in recs if lo <= float(r["confidence"]) < hi]
-                                acc = _avg([r["accuracy"] for r in bucket]) if bucket else None
-                                cal_table.append({
-                                    "Model": model,
-                                    "Bin": f"{lo:.1f}-{hi:.1f}",
-                                    "n": len(bucket),
-                                    "Accuracy": round(acc, 3) if acc is not None else None
-                                })
-                        cal_df = pd.DataFrame(cal_table)
-                        st.dataframe(cal_df, use_container_width=True)
+                    # Lightweight summaries if expected columns exist
+                    if {"model", "citation_support_rate", "accuracy"}.issubset(df.columns):
+                        st.subheader("Summary")
+                        summ = (
+                            df.groupby("model", dropna=False)
+                            .agg(
+                                n=("accuracy", "count"),
+                                avg_accuracy=("accuracy", "mean"),
+                                avg_citation_support=("citation_support_rate", "mean"),
+                            )
+                            .reset_index()
+                        )
+                        st.dataframe(summ, use_container_width=True)
 
                     # exports
-                    if per_example_rows:
-                        csv_buf = pd.DataFrame(per_example_rows).to_csv(index=False)
-                        json_buf = json.dumps(per_example_rows, ensure_ascii=False, indent=2)
-                        st.download_button("Download results CSV", data=csv_buf, file_name="eval_results.csv", mime="text/csv")
-                        st.download_button("Download results JSON", data=json_buf, file_name="eval_results.json", mime="application/json")
-
+                    st.download_button(
+                        "Download results JSON",
+                        data=json.dumps(per_rows, ensure_ascii=False, indent=2),
+                        file_name="eval_results.json",
+                        mime="application/json",
+                    )
         except Exception as e:
             st.error(f"Eval failed: {e}")

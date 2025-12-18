@@ -37,6 +37,9 @@ dist/
 node_modules/
 *.log
 
+# Playwright persistent profile / artifacts
+.playwright/
+
 # Project data
 data/index/
 data/processed/

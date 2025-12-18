@@ -1,0 +1,16 @@
+fastapi>=0.110
+uvicorn[standard]>=0.27
+pydantic>=2.0
+python-dotenv>=1.0
+numpy>=1.24
+pandas>=2.0
+rank-bm25>=0.2.2
+sentence-transformers>=3.0
+torch>=2.0
+faiss-cpu>=1.7.4
+requests>=2.31
+beautifulsoup4>=4.12
+readability-lxml>=0.8.1
+lxml>=5.0
+streamlit>=1.31
+playwright>=1.41
