@@ -262,7 +262,7 @@ if "_products" not in st.session_state:
         st.session_state["_products"] = []
         st.sidebar.error(f"Could not reach API: {e}")
 
-MODEL_CHOICES = ["llama3.1:8b", "mistral:7b", "qwen2:7b", "phi3:14b", "extractive"]
+MODEL_CHOICES = ["llama3.1:8b", "mistral:7b", "qwen2:7b", "extractive"]
 
 with tabs[0]:
     st.subheader("Amazon Product")
@@ -274,7 +274,7 @@ with tabs[0]:
         with st.form("amz_scrape_form", clear_on_submit=False):
             query = st.text_input(
                 "Keyword / Amazon URL / ASIN",
-                value=st.session_state.get("amz_query", "Ninja blender 900W"),
+                value=st.session_state.get("amz_query", ""),
                 key="amz_query_input",
             )
             max_pages = st.slider(
@@ -348,7 +348,7 @@ with tabs[0]:
         model_choice = st.selectbox("Model", options=MODEL_CHOICES, index=0, key="amz_model_select")
 
         with st.form("amz_ask_form", clear_on_submit=False):
-            q = st.text_input("Question", value=st.session_state.get("amz_question", "Is it good for smoothies?"), key="amz_question_input")
+            q = st.text_input("Question", value=st.session_state.get("amz_question", ""), key="amz_question_input")
             ask = st.form_submit_button("Ask", type="primary", disabled=(pid == "(none)" or not q))
 
         if ask:
@@ -400,8 +400,8 @@ with tabs[2]:
 
     eval_models = st.multiselect(
         "Select models",
-        options=["llama3.1:8b", "mistral:7b", "qwen2:7b", "phi3:14b", "extractive"],
-        default=["llama3.1:8b", "mistral:7b", "qwen2:7b", "phi3:14b"],
+        options=["llama3.1:8b", "mistral:7b", "qwen2:7b", "extractive"],
+        default=["llama3.1:8b", "mistral:7b", "qwen2:7b"],
     )
     eval_datasets = st.multiselect(
         "Select datasets",
