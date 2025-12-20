@@ -90,7 +90,6 @@ def ask(req: AskReq):
 
     hits = retr.search(req.question, k_dense=30, k_out=8)
 
-    # Try LLM, on any error, fall back to extractive answer
     try:
         ans = generate_llm_answer(req.question, hits, model_name=req.model)
         ans["engine"] = "llm"

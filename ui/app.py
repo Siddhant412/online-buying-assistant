@@ -285,25 +285,29 @@ with tabs[0]:
                 key="amz_max_pages_slider",
             )
             sort = st.selectbox("Review sort", options=["recent", "helpful"], index=0, key="amz_sort")
-            run_scrape = st.form_submit_button("Ingest from Amazon", type="primary", disabled=not query)
+
+            run_scrape = st.form_submit_button("Ingest from Amazon", type="primary")
 
         if run_scrape:
-            try:
-                st.session_state["amz_query"] = query
-                st.session_state["amz_max_pages"] = max_pages
-                with st.spinner("Scraping and ingesting..."):
-                    resp = api_ingest_amazon(query, max_pages=max_pages, sort=sort)
-                st.success(f"Indexed {resp.get('asin')} with {resp.get('reviews')} reviews.")
-                if resp.get("warning"):
-                    st.warning(resp["warning"])
-                st.session_state["_products"] = api_get_products()
-                st.session_state["amz_product_id"] = resp.get("product_id")
-                st.session_state["amz_asin"] = resp.get("asin")
-                st.session_state["amz_url"] = resp.get("url")
-                st.session_state["amz_reviews"] = resp.get("reviews")
-                st.session_state["amz_title"] = resp.get("title") or resp.get("product_id")
-            except Exception as e:
-                st.error(f"Amazon ingest failed: {e}")
+            if not (query or "").strip():
+                st.warning("Enter a keyword, Amazon URL, or ASIN.")
+            else:
+                try:
+                    st.session_state["amz_query"] = query
+                    st.session_state["amz_max_pages"] = max_pages
+                    with st.spinner("Scraping and ingesting..."):
+                        resp = api_ingest_amazon(query, max_pages=max_pages, sort=sort)
+                    st.success(f"Indexed {resp.get('asin')} with {resp.get('reviews')} reviews.")
+                    if resp.get("warning"):
+                        st.warning(resp["warning"])
+                    st.session_state["_products"] = api_get_products()
+                    st.session_state["amz_product_id"] = resp.get("product_id")
+                    st.session_state["amz_asin"] = resp.get("asin")
+                    st.session_state["amz_url"] = resp.get("url")
+                    st.session_state["amz_reviews"] = resp.get("reviews")
+                    st.session_state["amz_title"] = resp.get("title") or resp.get("product_id")
+                except Exception as e:
+                    st.error(f"Amazon ingest failed: {e}")
 
 
         # Summary card
@@ -349,17 +353,23 @@ with tabs[0]:
 
         with st.form("amz_ask_form", clear_on_submit=False):
             q = st.text_input("Question", value=st.session_state.get("amz_question", ""), key="amz_question_input")
-            ask = st.form_submit_button("Ask", type="primary", disabled=(pid == "(none)" or not q))
+
+            ask = st.form_submit_button("Ask", type="primary")
 
         if ask:
-            try:
-                st.session_state["amz_question"] = q
-                chosen_model = None if model_choice == "extractive" else model_choice
-                with st.spinner("Thinking..."):
-                    res = api_ask(pid, q, model=chosen_model)
-                st.session_state["amz_last_answer"] = res
-            except Exception as e:
-                st.error(f"Request failed: {e}")
+            if pid == "(none)":
+                st.warning("Index a product first, then select it here.")
+            elif not (q or "").strip():
+                st.warning("Enter a question.")
+            else:
+                try:
+                    st.session_state["amz_question"] = q
+                    chosen_model = None if model_choice == "extractive" else model_choice
+                    with st.spinner("Thinking..."):
+                        res = api_ask(pid, q, model=chosen_model)
+                    st.session_state["amz_last_answer"] = res
+                except Exception as e:
+                    st.error(f"Request failed: {e}")
 
         last = st.session_state.get("amz_last_answer")
         if last:
