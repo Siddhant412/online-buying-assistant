@@ -24,17 +24,20 @@ Completed:
 - API versioning foundation: explicit `/api/v1` router with DB-backed product catalog endpoints and DB-backed `/api/v1/ask`.
 - Retrieval migration foundation: DB chunk retriever, Postgres-native full-text/vector hybrid retrieval, SQLite/Python fallback, optional reranker provider, retrieval index migration, and persisted query/citation logs.
 - Provider foundation: local sentence-transformers embedding provider, configurable embedding writes, helper for persisting missing chunk embeddings, Ollama chat provider, and OpenAI-compatible chat provider.
+- Evaluation API foundation: DB-backed eval dataset creation/import/list/read endpoints and synchronous CI-friendly eval run endpoints using extractive defaults.
+- Security foundation: API key enforcement for `/api/v1` write endpoints with `x-api-key` and Bearer token support.
+- Frontend foundation: Next.js app with server-side API proxy, product library, ingestion job creation/status, DB-backed ask/evidence inspection, and eval dataset/run controls.
 - MVP compatibility fixes: lazy heavy imports for lightweight API startup, extractive model routing, date normalization, and empty-ingest validation.
-- Verification baseline: unit/API/integration tests for answerer behavior, LLM provider citation enforcement, health/readiness, DB models, migrations, ingestion jobs, DB-backed product catalog reads, DB-backed ask/query logging, and temporal logic.
+- Verification baseline: unit/API/integration tests for answerer behavior, LLM provider citation enforcement, health/readiness, DB models, migrations, ingestion jobs, DB-backed product catalog reads, DB-backed ask/query logging, eval APIs/runs, API key enforcement, temporal logic, and frontend lint/build.
 
 In progress:
-- Expanding evaluation storage into API workflows and CI-friendly eval runs.
-- Hardening operational controls around write auth, rate-limit hooks, and request/input limits.
+- Expanding observability and operational controls beyond the current structured logs, health checks, and API key guard.
+- Hardening frontend acceptance coverage against a running backend.
 
 Next planned slice:
-- Add `/api/v1/eval-datasets` and `/api/v1/eval-runs` endpoints backed by the existing eval tables.
-- Persist small fixture eval runs from CI without requiring heavyweight local model downloads.
-- Add API key enforcement for write endpoints and documented operational limits.
+- Add OpenTelemetry instrumentation hooks for FastAPI, SQLAlchemy, worker tasks, and provider calls.
+- Add request/input size limits and rate-limit hooks for write-heavy endpoints.
+- Add Playwright smoke tests for the Next.js workflow against local services.
 
 ## Key Changes
 

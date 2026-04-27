@@ -38,8 +38,19 @@ def test_ingestion_job_api_creates_lists_and_fetches_without_enqueue(monkeypatch
     monkeypatch.setattr(db_package, "SessionLocal", session_factory)
 
     client = TestClient(app)
+    unauthenticated = client.post(
+        "/api/v1/ingestion-jobs",
+        json={
+            "product_html": "pan.html",
+            "reviews_file": "pan_reviews.csv",
+            "enqueue": False,
+        },
+    )
+    assert unauthenticated.status_code == 401
+
     create_response = client.post(
         "/api/v1/ingestion-jobs",
+        headers={"x-api-key": "change-me"},
         json={
             "product_html": "pan.html",
             "reviews_file": "pan_reviews.csv",

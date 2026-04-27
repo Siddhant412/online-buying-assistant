@@ -26,6 +26,7 @@ Create `.env` in the project root:
 # Storage and jobs
 DATABASE_URL=postgresql+psycopg://oba:oba@localhost:5432/oba
 REDIS_URL=redis://localhost:6379/0
+API_KEY=change-me
 
 # Backend URL used by Streamlit
 API_URL=http://127.0.0.1:8000
@@ -57,7 +58,16 @@ EVAL_DATASET=eval/groundtruth_dataset.jsonl
 make run-api
 ```
 
-### 4) Run the UI (Streamlit)
+### 4) Run the production frontend (Next.js)
+
+```bash
+make frontend-install
+make run-frontend
+```
+
+The frontend targets Node.js 24+. Open `http://localhost:3000`. The Next.js app proxies API calls to FastAPI and injects `API_KEY` server-side for protected write endpoints.
+
+### 5) Run the legacy UI (Streamlit)
 
 ```bash
 make run-ui
@@ -70,6 +80,12 @@ Start the production-style local services:
 ```bash
 docker compose up --build
 ```
+
+Services:
+- FastAPI: `http://localhost:8000`
+- Next.js frontend: `http://localhost:3000`
+- Postgres + pgvector: `localhost:5432`
+- Redis: `localhost:6379`
 
 Apply database migrations:
 
@@ -87,6 +103,7 @@ Create a DB-backed ingestion job for raw files under `data/raw/`:
 
 ```bash
 curl -X POST http://127.0.0.1:8000/api/v1/ingestion-jobs \
+  -H "x-api-key: change-me" \
   -H "Content-Type: application/json" \
   -d '{"product_html":"pan.html","reviews_file":"pan_reviews.csv","enqueue":true}'
 ```
@@ -115,6 +132,26 @@ curl -X POST http://127.0.0.1:8000/api/v1/ask \
 ```
 
 `/api/v1/ask` uses the DB-backed retriever, persists query logs and citation rows, and includes retrieval/model diagnostics. On Postgres it uses native full-text search plus pgvector similarity when embeddings exist. Embedding writes are disabled by default to keep fresh local setup lightweight; set `ENABLE_EMBEDDING_WRITES=1` after installing the `rag` extra to populate pgvector embeddings during ingestion.
+
+Create a DB-backed eval dataset:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/eval-datasets \
+  -H "x-api-key: change-me" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"groundtruth","source_path":"eval/groundtruth_dataset.jsonl","replace":true}'
+```
+
+Run a CI-friendly extractive eval:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/eval-runs \
+  -H "x-api-key: change-me" \
+  -H "Content-Type: application/json" \
+  -d '{"dataset_name":"groundtruth","model":"extractive","k":5}'
+```
+
+Write endpoints under `/api/v1` require `x-api-key` or `Authorization: Bearer <API_KEY>`.
 
 Legacy MVP file-index endpoints remain available during the migration at `/ingest`, `/products`, `/products_meta`, `/ask`, and `/ingest_amazon`.
 

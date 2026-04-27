@@ -1,14 +1,16 @@
 import json
 from datetime import datetime
+from pathlib import Path
 from time import perf_counter
 from typing import Any
 from uuid import UUID
 
 from dotenv import load_dotenv
-from fastapi import APIRouter, FastAPI, HTTPException, Request
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
+from .auth import require_api_key
 from .errors import register_exception_handlers
 from .logging_config import configure_logging
 from .middleware import RequestContextMiddleware
@@ -56,6 +58,31 @@ class IngestionJobCreateReq(BaseModel):
     reviews_file: str
     source_url: str | None = None
     enqueue: bool = True
+
+
+class EvalExampleIn(BaseModel):
+    product_id: str
+    question: str
+    answerable: bool = True
+    gold_spans: list[dict[str, Any]] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class EvalDatasetCreateReq(BaseModel):
+    name: str = Field(min_length=1, max_length=128)
+    description: str | None = None
+    source_path: str | None = None
+    examples: list[EvalExampleIn] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    replace: bool = False
+
+
+class EvalRunCreateReq(BaseModel):
+    dataset_id: UUID | None = None
+    dataset_name: str | None = None
+    model: str = "extractive"
+    k: int = Field(default=5, ge=1, le=20)
+    max_examples: int | None = Field(default=None, ge=1, le=1000)
 
 
 def _iso(dt: datetime | None) -> str | None:
@@ -128,6 +155,66 @@ def _chunk_payload(chunk: Any) -> dict[str, Any]:
         "token_count": chunk.token_count,
         "metadata": chunk.metadata_ or {},
     }
+
+
+def _eval_example_payload(example: Any) -> dict[str, Any]:
+    return {
+        "id": str(example.id),
+        "product_id": example.product_external_id,
+        "question": example.question,
+        "answerable": example.answerable,
+        "gold_spans": example.gold_spans or [],
+        "metadata": example.metadata_ or {},
+        "created_at": _iso(example.created_at),
+    }
+
+
+def _eval_dataset_payload(
+    dataset: Any,
+    *,
+    example_count: int | None = None,
+    examples: list[Any] | None = None,
+) -> dict[str, Any]:
+    payload = {
+        "id": str(dataset.id),
+        "name": dataset.name,
+        "description": dataset.description,
+        "metadata": dataset.metadata_ or {},
+        "example_count": example_count,
+        "created_at": _iso(dataset.created_at),
+    }
+    if examples is not None:
+        payload["examples"] = [_eval_example_payload(example) for example in examples]
+    return payload
+
+
+def _eval_run_payload(run: Any) -> dict[str, Any]:
+    return {
+        "id": str(run.id),
+        "dataset_id": str(run.dataset_id),
+        "model": run.model_name,
+        "status": run.status,
+        "metrics": run.metrics or {},
+        "error_message": run.error_message,
+        "created_at": _iso(run.created_at),
+        "completed_at": _iso(run.completed_at),
+    }
+
+
+def _resolve_eval_source(source_path: str) -> Path:
+    root = Path.cwd().resolve()
+    path = Path(source_path)
+    if not path.is_absolute():
+        path = root / path
+    path = path.resolve()
+    eval_dir = (root / "eval").resolve()
+    if eval_dir != path and eval_dir not in path.parents:
+        raise HTTPException(status_code=400, detail="Eval source_path must be under the eval directory.")
+    if path.suffix.lower() != ".jsonl":
+        raise HTTPException(status_code=400, detail="Eval source_path must point to a JSONL file.")
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Eval source_path not found.")
+    return path
 
 
 def _answer_from_hits(question: str, model: str | None, hits: list[dict]) -> dict[str, Any]:
@@ -340,7 +427,10 @@ def list_v1_product_reviews(product_id: str, limit: int = 50, offset: int = 0):
 
 
 @v1_router.post("/ingestion-jobs")
-def create_ingestion_job(req: IngestionJobCreateReq):
+def create_ingestion_job(
+    req: IngestionJobCreateReq,
+    _: None = Depends(require_api_key),
+):
     from .db.repositories import IngestionJobRepository
     from .db.session import session_scope
 
@@ -405,6 +495,128 @@ def get_ingestion_job(job_id: UUID):
         if job is None:
             raise HTTPException(status_code=404, detail="Ingestion job not found.")
         return _job_payload(job)
+
+
+@v1_router.get("/eval-datasets")
+def list_eval_datasets(limit: int = 100, offset: int = 0):
+    from .db.repositories import EvalDatasetRepository
+    from .db.session import session_scope
+
+    with session_scope() as session:
+        repo = EvalDatasetRepository(session)
+        datasets = repo.list_datasets(limit=limit, offset=offset)
+        return {
+            "datasets": [
+                _eval_dataset_payload(dataset, example_count=repo.example_count(dataset.id))
+                for dataset in datasets
+            ]
+        }
+
+
+@v1_router.post("/eval-datasets")
+def create_eval_dataset(
+    req: EvalDatasetCreateReq,
+    _: None = Depends(require_api_key),
+):
+    from .db.repositories import EvalDatasetRepository
+    from .db.session import session_scope
+    from .eval_service import load_eval_examples_jsonl
+
+    examples = [example.model_dump() for example in req.examples]
+    metadata = dict(req.metadata)
+    if req.source_path:
+        source = _resolve_eval_source(req.source_path)
+        loaded_examples = load_eval_examples_jsonl(source)
+        examples.extend(loaded_examples)
+        metadata["source_path"] = str(source.relative_to(Path.cwd().resolve()))
+
+    if not examples:
+        raise HTTPException(status_code=422, detail="Eval dataset must include at least one example.")
+
+    with session_scope() as session:
+        repo = EvalDatasetRepository(session)
+        try:
+            dataset = repo.create_or_replace(
+                name=req.name,
+                description=req.description,
+                metadata=metadata,
+                examples=examples,
+                replace=req.replace,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        session.flush()
+        return _eval_dataset_payload(
+            dataset,
+            example_count=repo.example_count(dataset.id),
+            examples=list(repo.list_examples(dataset.id)),
+        )
+
+
+@v1_router.get("/eval-datasets/{dataset_id}")
+def get_eval_dataset(dataset_id: UUID):
+    from .db.repositories import EvalDatasetRepository
+    from .db.session import session_scope
+
+    with session_scope() as session:
+        repo = EvalDatasetRepository(session)
+        dataset = repo.get(dataset_id)
+        if dataset is None:
+            raise HTTPException(status_code=404, detail="Eval dataset not found.")
+        return _eval_dataset_payload(
+            dataset,
+            example_count=repo.example_count(dataset.id),
+            examples=list(repo.list_examples(dataset.id)),
+        )
+
+
+@v1_router.get("/eval-runs")
+def list_eval_runs(limit: int = 100, offset: int = 0):
+    from .db.repositories import EvalRunRepository
+    from .db.session import session_scope
+
+    with session_scope() as session:
+        runs = EvalRunRepository(session).list_runs(limit=limit, offset=offset)
+        return {"runs": [_eval_run_payload(run) for run in runs]}
+
+
+@v1_router.post("/eval-runs")
+def create_eval_run_endpoint(
+    req: EvalRunCreateReq,
+    _: None = Depends(require_api_key),
+):
+    from .db.repositories import EvalDatasetRepository
+    from .db.session import session_scope
+    from .eval_service import create_eval_run
+
+    with session_scope() as session:
+        dataset_repo = EvalDatasetRepository(session)
+        dataset = dataset_repo.get(req.dataset_id) if req.dataset_id else None
+        if dataset is None and req.dataset_name:
+            dataset = dataset_repo.get_by_name(req.dataset_name)
+        if dataset is None:
+            raise HTTPException(status_code=404, detail="Eval dataset not found.")
+
+        run, _metrics = create_eval_run(
+            session,
+            dataset_id=dataset.id,
+            model_name=req.model,
+            k=req.k,
+            max_examples=req.max_examples,
+        )
+        return _eval_run_payload(run)
+
+
+@v1_router.get("/eval-runs/{run_id}")
+def get_eval_run(run_id: UUID):
+    from .db.repositories import EvalRunRepository
+    from .db.session import session_scope
+
+    with session_scope() as session:
+        run = EvalRunRepository(session).get(run_id)
+        if run is None:
+            raise HTTPException(status_code=404, detail="Eval run not found.")
+        return _eval_run_payload(run)
 
 
 @v1_router.post("/ask")

@@ -15,3 +15,6 @@ __pycache__
 data/index
 data/processed
 .playwright
+frontend/node_modules
+frontend/.next
+frontend/.env*

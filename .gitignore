@@ -35,6 +35,8 @@ dist/
 
 # Node
 node_modules/
+frontend/.next/
+frontend/out/
 *.log
 
 # Playwright persistent profile / artifacts

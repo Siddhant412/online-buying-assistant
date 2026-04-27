@@ -17,6 +17,8 @@ RUN uv sync --frozen --extra rag --extra scrape --extra postgres --extra worker 
 
 COPY app ./app
 COPY eval ./eval
+COPY alembic.ini ./
+COPY migrations ./migrations
 COPY scripts ./scripts
 COPY ui ./ui
 COPY data/raw ./data/raw

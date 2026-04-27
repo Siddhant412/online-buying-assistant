@@ -1,4 +1,4 @@
-.PHONY: help sync sync-dev lint format typecheck test migrate migration run-api run-worker run-ui docker-up docker-down docker-logs
+.PHONY: help sync sync-dev lint format typecheck test frontend-install frontend-lint frontend-build migrate migration run-api run-worker run-ui run-frontend docker-up docker-down docker-logs
 
 PYTHON ?= python
 UV ?= uv
@@ -11,11 +11,15 @@ help:
 	@echo "  make format      Format Python code with ruff"
 	@echo "  make typecheck   Run mypy"
 	@echo "  make test        Run pytest"
+	@echo "  make frontend-install Install frontend dependencies"
+	@echo "  make frontend-lint    Run frontend lint"
+	@echo "  make frontend-build   Build the Next.js frontend"
 	@echo "  make migrate     Apply Alembic migrations"
 	@echo "  make migration   Create an Alembic migration, e.g. make migration MSG='add table'"
 	@echo "  make run-api     Start FastAPI locally"
 	@echo "  make run-worker  Start the RQ worker locally"
 	@echo "  make run-ui      Start the legacy Streamlit UI"
+	@echo "  make run-frontend Start the Next.js frontend"
 	@echo "  make docker-up   Start local services with Docker Compose"
 
 sync:
@@ -25,16 +29,25 @@ sync-dev:
 	$(UV) sync --extra dev
 
 lint:
-	$(UV) run ruff check app/api.py app/db app/db_retriever.py app/embeddings.py app/errors.py app/ingestion_tasks.py app/logging_config.py app/middleware.py app/providers.py app/queue.py app/settings.py app/worker.py migrations tests
+	$(UV) run ruff check app/api.py app/auth.py app/db app/db_retriever.py app/embeddings.py app/errors.py app/eval_service.py app/ingestion_tasks.py app/logging_config.py app/middleware.py app/providers.py app/queue.py app/settings.py app/worker.py migrations tests
 
 format:
-	$(UV) run ruff format app/api.py app/db app/db_retriever.py app/embeddings.py app/errors.py app/ingestion_tasks.py app/logging_config.py app/middleware.py app/providers.py app/queue.py app/settings.py app/worker.py migrations tests
+	$(UV) run ruff format app/api.py app/auth.py app/db app/db_retriever.py app/embeddings.py app/errors.py app/eval_service.py app/ingestion_tasks.py app/logging_config.py app/middleware.py app/providers.py app/queue.py app/settings.py app/worker.py migrations tests
 
 typecheck:
-	$(UV) run mypy --follow-imports=skip app/api.py app/db app/db_retriever.py app/embeddings.py app/errors.py app/ingestion_tasks.py app/logging_config.py app/middleware.py app/providers.py app/queue.py app/settings.py app/worker.py
+	$(UV) run mypy --follow-imports=skip app/api.py app/auth.py app/db app/db_retriever.py app/embeddings.py app/errors.py app/eval_service.py app/ingestion_tasks.py app/logging_config.py app/middleware.py app/providers.py app/queue.py app/settings.py app/worker.py
 
 test:
 	$(UV) run pytest
+
+frontend-install:
+	npm --prefix frontend install
+
+frontend-lint:
+	npm --prefix frontend run lint
+
+frontend-build:
+	npm --prefix frontend run build
 
 migrate:
 	$(UV) run alembic upgrade head
@@ -50,6 +63,9 @@ run-worker:
 
 run-ui:
 	$(UV) run streamlit run ui/app.py
+
+run-frontend:
+	npm --prefix frontend run dev
 
 docker-up:
 	docker compose up --build

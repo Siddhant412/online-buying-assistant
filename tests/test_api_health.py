@@ -19,3 +19,5 @@ def test_v1_products_route_exists() -> None:
     assert "/products" in paths
     assert "/api/v1/products" in paths
     assert "/api/v1/ask" in paths
+    assert "/api/v1/eval-datasets" in paths
+    assert "/api/v1/eval-runs" in paths

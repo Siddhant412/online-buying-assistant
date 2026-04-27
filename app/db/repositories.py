@@ -11,6 +11,9 @@ from sqlalchemy.orm import Session
 from .models import (
     Chunk,
     Citation,
+    EvalDataset,
+    EvalExample,
+    EvalRun,
     IngestionJob,
     Product,
     ProductSection,
@@ -326,3 +329,95 @@ class QueryLogRepository:
                 )
             )
         return query_log
+
+
+class EvalDatasetRepository:
+    def __init__(self, session: Session) -> None:
+        self.session = session
+
+    def get(self, dataset_id: UUID) -> EvalDataset | None:
+        return self.session.get(EvalDataset, dataset_id)
+
+    def get_by_name(self, name: str) -> EvalDataset | None:
+        stmt = select(EvalDataset).where(EvalDataset.name == name)
+        return self.session.scalar(stmt)
+
+    def list_datasets(self, limit: int = 100, offset: int = 0) -> Sequence[EvalDataset]:
+        stmt = select(EvalDataset).order_by(EvalDataset.created_at.desc()).limit(limit).offset(offset)
+        return self.session.scalars(stmt).all()
+
+    def create_or_replace(
+        self,
+        *,
+        name: str,
+        description: str | None = None,
+        metadata: dict[str, Any] | None = None,
+        examples: list[dict[str, Any]] | None = None,
+        replace: bool = False,
+    ) -> EvalDataset:
+        dataset = self.get_by_name(name)
+        if dataset is None:
+            dataset = EvalDataset(name=name)
+            self.session.add(dataset)
+            self.session.flush()
+        elif replace:
+            self.session.execute(delete(EvalExample).where(EvalExample.dataset_id == dataset.id))
+        else:
+            raise ValueError(f"Eval dataset already exists: {name}")
+
+        dataset.description = description
+        dataset.metadata_ = metadata or {}
+        rows = [
+            EvalExample(
+                dataset=dataset,
+                product_external_id=str(example["product_id"]),
+                question=str(example["question"]),
+                answerable=bool(example.get("answerable", True)),
+                gold_spans=list(example.get("gold_spans") or []),
+                metadata_=dict(example.get("metadata") or {}),
+            )
+            for example in examples or []
+        ]
+        self.session.add_all(rows)
+        return dataset
+
+    def example_count(self, dataset_id: UUID) -> int:
+        return self.session.query(EvalExample).filter_by(dataset_id=dataset_id).count()
+
+    def list_examples(self, dataset_id: UUID, limit: int = 1000) -> Sequence[EvalExample]:
+        stmt = (
+            select(EvalExample)
+            .where(EvalExample.dataset_id == dataset_id)
+            .order_by(EvalExample.created_at.asc())
+            .limit(limit)
+        )
+        return self.session.scalars(stmt).all()
+
+
+class EvalRunRepository:
+    def __init__(self, session: Session) -> None:
+        self.session = session
+
+    def get(self, run_id: UUID) -> EvalRun | None:
+        return self.session.get(EvalRun, run_id)
+
+    def list_runs(self, limit: int = 100, offset: int = 0) -> Sequence[EvalRun]:
+        stmt = select(EvalRun).order_by(EvalRun.created_at.desc()).limit(limit).offset(offset)
+        return self.session.scalars(stmt).all()
+
+    def create(self, *, dataset_id: UUID, model_name: str) -> EvalRun:
+        run = EvalRun(dataset_id=dataset_id, model_name=model_name, status="running", metrics={})
+        self.session.add(run)
+        self.session.flush()
+        return run
+
+    def mark_succeeded(self, run: EvalRun, metrics: dict[str, Any]) -> None:
+        run.status = "succeeded"
+        run.metrics = metrics
+        run.error_message = None
+        run.completed_at = datetime.now(UTC)
+
+    def mark_failed(self, run: EvalRun, error_message: str) -> None:
+        run.status = "failed"
+        run.error_message = error_message
+        run.completed_at = datetime.now(UTC)
