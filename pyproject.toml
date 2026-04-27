@@ -1,0 +1,106 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "online-buying-assistant"
+version = "0.1.0"
+description = "Evidence-grounded product buying assistant with a production-oriented RAG backend."
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+license = { text = "MIT" }
+authors = [{ name = "Siddhant Raje" }]
+dependencies = [
+  "alembic>=1.13,<2",
+  "beautifulsoup4>=4.12,<5",
+  "fastapi>=0.110,<1",
+  "lxml>=5,<7",
+  "pandas>=2,<3",
+  "pgvector>=0.3,<1",
+  "psycopg[binary]>=3.1,<4",
+  "pydantic>=2,<3",
+  "pydantic-settings>=2,<3",
+  "python-dotenv>=1,<2",
+  "readability-lxml>=0.8.1,<1",
+  "redis>=5,<7",
+  "requests>=2.31,<3",
+  "rq>=1.16,<3",
+  "sqlalchemy>=2,<3",
+  "structlog>=24,<27",
+  "uvicorn[standard]>=0.27,<1",
+]
+
+[project.optional-dependencies]
+rag = [
+  "faiss-cpu>=1.7.4,<2",
+  "numpy>=1.24,<3",
+  "rank-bm25>=0.2.2,<0.3",
+  "sentence-transformers>=3,<6",
+  "torch>=2,<3",
+]
+scrape = [
+  "playwright>=1.41,<2",
+]
+ui = [
+  "streamlit>=1.31,<2",
+]
+postgres = [
+  "alembic>=1.13,<2",
+  "pgvector>=0.3,<1",
+  "psycopg[binary]>=3.1,<4",
+  "sqlalchemy>=2,<3",
+]
+worker = [
+  "redis>=5,<7",
+  "rq>=1.16,<3",
+]
+observability = [
+  "opentelemetry-api>=1.24,<2",
+  "opentelemetry-exporter-otlp>=1.24,<2",
+  "opentelemetry-instrumentation-fastapi>=0.45b0,<1",
+  "opentelemetry-instrumentation-requests>=0.45b0,<1",
+  "opentelemetry-instrumentation-sqlalchemy>=0.45b0,<1",
+  "opentelemetry-sdk>=1.24,<2",
+]
+dev = [
+  "httpx>=0.27,<1",
+  "mypy>=1.10,<2",
+  "pre-commit>=3.7,<5",
+  "pytest>=8,<9",
+  "pytest-cov>=5,<8",
+  "ruff>=0.8,<1",
+  "types-requests>=2.31,<3",
+]
+
+[project.scripts]
+oba-api = "app.api:main"
+oba-worker = "app.worker:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = [
+  "--strict-config",
+  "--strict-markers",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = [
+  "B008",
+  "E501",
+]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+warn_unused_configs = true
+no_implicit_optional = true
+check_untyped_defs = false

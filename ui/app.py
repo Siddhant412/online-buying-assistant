@@ -364,9 +364,8 @@ with tabs[0]:
             else:
                 try:
                     st.session_state["amz_question"] = q
-                    chosen_model = None if model_choice == "extractive" else model_choice
                     with st.spinner("Thinking..."):
-                        res = api_ask(pid, q, model=chosen_model)
+                        res = api_ask(pid, q, model=model_choice)
                     st.session_state["amz_last_answer"] = res
                 except Exception as e:
                     st.error(f"Request failed: {e}")

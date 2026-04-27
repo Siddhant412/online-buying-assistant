@@ -1,0 +1,70 @@
+services:
+  api:
+    build:
+      context: .
+    command: uvicorn app.api:app --host 0.0.0.0 --port 8000
+    env_file:
+      - .env.example
+    environment:
+      DATABASE_URL: postgresql+psycopg://oba:oba@postgres:5432/oba
+      REDIS_URL: redis://redis:6379/0
+      API_URL: http://localhost:8000
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - ./data:/app/data
+
+  worker:
+    build:
+      context: .
+    command: oba-worker
+    env_file:
+      - .env.example
+    environment:
+      DATABASE_URL: postgresql+psycopg://oba:oba@postgres:5432/oba
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - ./data:/app/data
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: oba
+      POSTGRES_USER: oba
+      POSTGRES_PASSWORD: oba
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U oba -d oba"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["ollama"]
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+
+volumes:
+  postgres_data:
+  ollama_data:

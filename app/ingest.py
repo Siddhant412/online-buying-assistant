@@ -73,7 +73,8 @@ def _normalize_reviews(reviews: list[dict]) -> list[dict]:
         if isinstance(d, (datetime, date)):
             rr["date"] = d.isoformat()
         elif d is not None:
-            rr["date"] = str(d)
+            parsed = pd.to_datetime(str(d), errors="coerce")
+            rr["date"] = parsed.date().isoformat() if not pd.isna(parsed) else str(d)
 
         # type normalization
         rr["verified"] = bool(rr.get("verified", False))

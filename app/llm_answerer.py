@@ -1,18 +1,17 @@
 from __future__ import annotations
-from typing import List, Dict, Tuple
-import os, re, json, requests
 
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.1:8b")
+import re
+from typing import Any
 
-# prompting
+from .providers import get_llm_provider
+
 SYSTEM_RULES = """\
 You are a careful product QA assistant. Answer ONLY using the EVIDENCE passages provided.
 Hard rules:
 - Every sentence MUST include at least one citation tag like [R2] or [S1], where tags are the exact source_id values shown in EVIDENCE.
-- If evidence conflicts, say "Reports vary" and briefly summarize (do not cherry-pick).
-- If the answer is unknown from the evidence, reply "Insufficient evidence." (still include at least one citation to the closest relevant passage, if any).
-- Be concise (1-2 sentences).
+- If evidence conflicts, say "Reports vary" and briefly summarize without cherry-picking.
+- If the answer is unknown from the evidence, reply "Insufficient evidence." and cite the closest relevant passage if one exists.
+- Be concise: 1-2 sentences.
 - Never invent facts or sources. Never use outside knowledge.
 """
 
@@ -26,132 +25,95 @@ EVIDENCE (each item has source_id in square brackets):
 Write a 1-2 sentence answer that follows the rules.
 """
 
-def _evidence_block(passages: List[Dict]) -> Tuple[str, set]:
-    """
-    Passage formatting:
-    [R2] (review, stars, verified, 2024-11-20): Non-stick wore off in 3 months...
-    Returns (block_text, allowed_ids)
-    """
-    lines = []
-    allowed = set()
-    for p in passages:
-        sid = p["source_id"]
-        st = p["source_type"]
-        allowed.add(sid)
-        if st == "review":
-            meta = p.get("meta", {})
-            rating = meta.get("rating", "")
-            verified = "verified" if meta.get("verified") else "unverified"
-            date = meta.get("date", "")
-            head = f"[{sid}] (review, ⭐{rating}, {verified}, {date})"
-        elif st == "spec":
-            head = f"[{sid}] (spec)"
-        else:
-            head = f"[{sid}] ({st})"
-        text = p["text"].replace("\n", " ").strip()
-        if len(text) > 400:
-            text = text[:400].rsplit(" ", 1)[0] + " ..."
-        lines.append(f"{head}: {text}")
-    return "\n".join(lines), allowed
-
-# minimal faithfulness guard on the LLM output
-
 _CIT_RE = re.compile(r"\[([A-Za-z0-9_-]+)\]")
 
-def _enforce_citations(ans: str, allowed: set, fallback_sid: str | None) -> str:
-    """
-    Ensure:
-    - Every sentence has at least one [ID] from allowed
-    - Remove any unknown [ID]s
-    """
-    # remove disallowed tags
-    def filter_ids(text: str) -> str:
-        def repl(m):
-            return f"[{m.group(1)}]" if m.group(1) in allowed else ""
-        return _CIT_RE.sub(repl, text)
 
-    cleaned = filter_ids(ans).strip()
+def _evidence_block(passages: list[dict[str, Any]]) -> tuple[str, set[str]]:
+    lines = []
+    allowed = set()
+    for passage in passages:
+        source_id = passage["source_id"]
+        source_type = passage["source_type"]
+        allowed.add(source_id)
+        if source_type == "review":
+            metadata = passage.get("meta", {})
+            rating = metadata.get("rating", "")
+            verified = "verified" if metadata.get("verified") else "unverified"
+            date = metadata.get("date", "")
+            header = f"[{source_id}] (review, rating={rating}, {verified}, {date})"
+        elif source_type == "spec":
+            header = f"[{source_id}] (spec)"
+        else:
+            header = f"[{source_id}] ({source_type})"
+        text = passage["text"].replace("\n", " ").strip()
+        if len(text) > 400:
+            text = text[:400].rsplit(" ", 1)[0] + " ..."
+        lines.append(f"{header}: {text}")
+    return "\n".join(lines), allowed
+
+
+def _enforce_citations(answer: str, allowed: set[str], fallback_source_id: str | None) -> str:
+    def replace_unknown(match: re.Match[str]) -> str:
+        source_id = match.group(1)
+        return f"[{source_id}]" if source_id in allowed else ""
+
+    cleaned = _CIT_RE.sub(replace_unknown, answer).strip()
     if not cleaned:
         return cleaned
 
-    # ensure each sentence has a citation
-    sents = re.split(r'(?<=[.!?])\s+', cleaned)
+    sentences = re.split(r"(?<=[.!?])\s+", cleaned)
     fixed = []
-    for s in sents:
-        if not s.strip():
+    for sentence in sentences:
+        if not sentence.strip():
             continue
-        if not _CIT_RE.search(s):
-            # append fallback citation if available
-            if fallback_sid:
-                s = s.rstrip() + f" [{fallback_sid}]"
-        fixed.append(s)
+        if not _CIT_RE.search(sentence) and fallback_source_id:
+            sentence = sentence.rstrip() + f" [{fallback_source_id}]"
+        fixed.append(sentence)
     return " ".join(fixed).strip()
 
-def _first_allowed_id(allowed: set) -> str | None:
+
+def _first_allowed_id(allowed: set[str]) -> str | None:
     return next(iter(allowed)) if allowed else None
-
-# Ollama client
-def _ollama_chat(system: str, user: str, model: str, url: str) -> str:
-    """
-    Calls Ollama /api/chat
-    """
-    endpoint = f"{url.rstrip('/')}/api/chat"
-    payload = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
-        "stream": False,
-        "options": {
-            "temperature": 0.2,
-            "num_ctx": 4096
-        }
-    }
-    resp = requests.post(endpoint, json=payload, timeout=60)
-    resp.raise_for_status()
-    data = resp.json()
-
-    return data.get("message", {}).get("content", "").strip()
 
 
 def generate_llm_answer(
     question: str,
-    passages: List[Dict],
+    passages: list[dict[str, Any]],
     model_name: str | None = None,
-    ollama_url: str | None = None
-) -> Dict:
-    """
-    Returns:
-    {
-      "answer": "<text with [IDs]>",
-      "citations": [{"source_id":..., "source_type":..., "meta":...}, ...],
-      "confidence": float
-    }
-    """
+) -> dict[str, Any]:
     if not passages:
         return {"answer": "Insufficient evidence.", "citations": [], "confidence": 0.0}
 
     evidence, allowed = _evidence_block(passages)
     prompt = USER_TEMPLATE.format(question=question, evidence_block=evidence)
     try:
-        model = model_name or OLLAMA_MODEL
-        url = ollama_url or OLLAMA_URL
-        raw = _ollama_chat(SYSTEM_RULES, prompt, model, url)
-    except Exception as e:
-        # let caller decide about fallback, but return structured error context
-        raise RuntimeError(f"Ollama error: {e}")
+        provider_response = get_llm_provider().chat(SYSTEM_RULES, prompt, model_name=model_name)
+    except Exception as exc:
+        raise RuntimeError(f"LLM provider error: {exc}") from exc
 
-    fixed = _enforce_citations(raw, allowed, _first_allowed_id(allowed))
+    fixed = _enforce_citations(
+        provider_response.content,
+        allowed,
+        _first_allowed_id(allowed),
+    )
     if not fixed:
-        # if model produced nothing valid, degrade gracefully
         first = _first_allowed_id(allowed)
         fixed = "Insufficient evidence." + (f" [{first}]" if first else "")
 
-    # confidence: simple heuristic = fraction of sentences that have citations
-    conf = 0.65
+    citations = [
+        {
+            "source_id": passage["source_id"],
+            "source_type": passage["source_type"],
+            "meta": passage.get("meta", {}),
+        }
+        for passage in passages
+    ]
 
-    # return all passages as eligible citations
-    cits = [{"source_id": p["source_id"], "source_type": p["source_type"], "meta": p.get("meta", {})} for p in passages]
-
-    return {"answer": fixed, "citations": cits, "confidence": conf}
+    return {
+        "answer": fixed,
+        "citations": citations,
+        "confidence": 0.65,
+        "provider": provider_response.provider,
+        "model": provider_response.model,
+        "provider_latency_ms": provider_response.latency_ms,
+    }

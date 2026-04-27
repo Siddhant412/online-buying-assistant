@@ -30,11 +30,7 @@ def _split_text(text: str, min_tok=80, max_tok=180) -> List[str]:
     if buf: out.append(buf)
     return out
 
-def chunk_processed(json_path: Path) -> list[Dict]:
-    blob = json.loads(json_path.read_text(encoding="utf-8"))
-    prod = blob["product"]
-    reviews = blob["reviews"]
-
+def build_chunks(prod: dict, reviews: list[dict]) -> list[Dict]:
     chunks = []
 
     # specs chunk (longer)
@@ -77,7 +73,17 @@ def chunk_processed(json_path: Path) -> list[Dict]:
                 "verified": bool(r.get("verified",False)),
                 "helpful_votes": int(r.get("helpful_votes",0))
             }
-        })
+            })
+
+    return chunks
+
+
+def chunk_processed(json_path: Path) -> list[Dict]:
+    blob = json.loads(json_path.read_text(encoding="utf-8"))
+    prod = blob["product"]
+    reviews = blob["reviews"]
+
+    chunks = build_chunks(prod, reviews)
 
     # save
     out_path = PROC_DIR / f"{prod['product_id']}_chunks.jsonl"
